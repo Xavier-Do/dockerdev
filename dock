@@ -1,0 +1,4 @@
+#!/bin/bash
+version="${@:-master}"
+workdir=$(pwd)
+docker run -ti --rm -e DOCKERTAG=$version -w ${workdir} -v /var/run/postgresql:/var/run/postgresql -v /home/$USER/:/home/$USER/ ${@:2} $version /bin/bash

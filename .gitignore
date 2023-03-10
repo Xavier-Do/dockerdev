@@ -1,0 +1,5 @@
+*
+!.gitignore
+!docker_build
+!dock
+!README.md

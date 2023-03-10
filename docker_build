@@ -1,0 +1,95 @@
+#!/usr/bin/python3
+import docker
+import getpass
+import html
+import logging
+import os
+from pathlib import Path
+import requests
+import sys
+
+format = '%(asctime)s %(levelname)s %(name)s: %(message)s'
+
+logFormatter = logging.Formatter(format)
+consoleHandler = logging.StreamHandler(sys.stdout)
+consoleHandler.setFormatter(logFormatter)
+root_logger = logging.getLogger()
+root_logger.addHandler(consoleHandler)
+root_logger.setLevel(logging.INFO)
+
+_logger = logging.getLogger(__name__)
+
+user = getpass.getuser()
+
+
+def build(version):
+    base_path = Path(__file__).resolve().parent
+    custom_layers_file = base_path / 'custom_layers'
+
+    # Generate custom layer file if it doesn't exist
+    if not os.path.isfile(custom_layers_file):
+        _logger.info('Generating custom layer files at %s' % custom_layers_file)
+        with open(custom_layers_file, 'w') as f:
+            f.write("""# This file contains custom layers specific to each use
+
+    # as an example add a debian package git-all and ipython3 + python package pick
+
+    RUN set -x ; \
+    apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git-all ipython3 \
+    && rm -rf /var/lib/apt/lists/*
+
+
+    RUN python3 -m pip install --no-cache-dir pick
+    """)
+
+    # get custom layers
+    with open(custom_layers_file) as f:
+        custom_layers = f.read()
+
+    additional_layers = f'''
+    {custom_layers}
+
+    RUN groupadd -g {os.getgid()} {user} \\
+        && useradd -u {os.getuid()} -g {user} -G audio,video {user} \\
+        && mkdir /home/{user} \\
+        && chown -R {user}:{user} /home/{user}
+        USER {user}
+    '''
+
+    params = f'version={version}'
+    if ':' in version:
+        params = f'docker_tag={version}'
+    url = f'https://runbot.odoo.com/runbot/dockerfile?{params}'
+    _logger.info(f'Getting docker file from {url}')
+    response = requests.get(f'https://runbot.odoo.com/runbot/dockerfile?{params}').text
+    if not response:
+        _logger.info('Looks like %s does not match a runbot docker file ', version)
+        return
+    base_docker_content = html.unescape(requests.get(f'https://runbot.odoo.com/runbot/dockerfile?{params}').text.replace('<pre>', '').replace('</pre>', ''))
+    workdir = base_path / 'workdir'
+    workdir.mkdir(exist_ok=True)
+    docker_file = workdir / f'Dockerfile_{version}'
+
+    _logger.info('Writing docker file in %s', docker_file)
+    with open(docker_file, 'w') as Dockerfile:
+        Dockerfile.write(base_docker_content + additional_layers)
+
+    _logger.info('Starting build')
+    docker_client = docker.from_env()
+    try:
+        docker_client.images.build(path=str(workdir), dockerfile=str(docker_file), tag=version, rm=True)
+    except docker.errors.APIError as e:
+        _logger.error('Build of image %s failed with this API error: %s', version, e)
+    except docker.errors.BuildError as e:
+        msg = f"{e.msg}\n{''.join(l.get('stream') or '' for l in e.build_log)}"
+        _logger.error('Build of image %s failed with this BUILD error:%s', version, msg)
+    _logger.info('Dockerfile %s finished build', version)
+
+
+if __name__ == '__main__':
+    if len(sys.argv) != 2 or sys.argv[1] in ('-h', '--help'):
+        _logger.info('First argument must be a version name (master) or a docker tag (odoo:DockerMaster)')
+    else:
+        version = sys.argv[1]
+        build(version)
