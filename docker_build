@@ -78,7 +78,7 @@ def build(version):
     _logger.info('Starting build')
     docker_client = docker.from_env()
     try:
-        docker_client.images.build(path=str(workdir), dockerfile=str(docker_file), tag=version, rm=True)
+        docker_client.images.build(path=str(workdir), dockerfile=str(docker_file), tag=f'runbot_image:{version}', rm=True)
     except docker.errors.APIError as e:
         _logger.error('Build of image %s failed with this API error: %s', version, e)
     except docker.errors.BuildError as e:
