@@ -25,7 +25,7 @@ user = getpass.getuser()
 def build(version):
     base_path = Path(__file__).resolve().parent
     custom_layers_file = base_path / 'custom_layers'
-
+    print(custom_layers_file)
     # Generate custom layer file if it doesn't exist
     if not os.path.isfile(custom_layers_file):
         _logger.info('Generating custom layer files at %s' % custom_layers_file)
@@ -50,7 +50,8 @@ def build(version):
     additional_layers = f'''
     {custom_layers}
 
-    RUN groupadd -g {os.getgid()} {user} \\
+    RUN userdel ubuntu || true \\
+        && groupadd -g {os.getgid()} {user} \\
         && useradd -u {os.getuid()} -g {user} -G audio,video {user} \\
         && mkdir /home/{user} \\
         && chown -R {user}:{user} /home/{user}
@@ -59,7 +60,9 @@ def build(version):
 
     params = f'version={version}'
     if ':' in version:
-        params = f'docker_tag={version}'
+        docker_tag = version
+        version = docker_tag.split(':')[1]
+        params = f'docker_tag={docker_tag}'
     url = f'https://runbot.odoo.com/runbot/dockerfile?{params}'
     _logger.info(f'Getting docker file from {url}')
     response = requests.get(f'https://runbot.odoo.com/runbot/dockerfile?{params}').text
@@ -78,6 +81,7 @@ def build(version):
     _logger.info('Starting build')
     docker_client = docker.from_env()
     try:
+        print(workdir, docker_file, version)
         docker_client.images.build(path=str(workdir), dockerfile=str(docker_file), tag=f'runbot_image:{version}', rm=True)
     except docker.errors.APIError as e:
         _logger.error('Build of image %s failed with this API error: %s', version, e)

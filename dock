@@ -1,4 +1,20 @@
 #!/bin/bash
 version="${@:-master}"
 workdir=$(pwd)
-docker run -ti --rm -e DOCKERTAG=$version -w ${workdir} -v /var/run/postgresql:/var/run/postgresql -v /home/$USER/:/home/$USER/:ro -v /home/$USER/.local/share/Odoo:/home/$USER/.local/share/Odoo ${@:2} -p 127.0.0.1:8069:8069/tcp -p 127.0.0.1:8070:8070/tcp  runbot_image:$version /bin/bash
+mkdir -p /home/$USER/docker_volumes/$version/bin
+mkdir -p /home/$USER/docker_volumes/$version/lib
+echo ${@:2}
+docker run -ti --rm -e DOCKERTAG=$version -w ${workdir} \
+    -v /var/run/postgresql:/var/run/postgresql \
+    -v /home/$USER/.bashrc:/home/$USER/.bashrc:ro \
+    -v /home/$USER/.bash_history:/home/$USER/.bash_history \
+    -v /home/$USER/bin/.:/home/$USER/bin:ro \
+    -v /home/$USER/osrc/.:/home/$USER/osrc:ro \
+    -v /home/$USER/.cargo/.:/home/$USER/.cargo:ro \
+    -v /home/$USER/docker_volumes/$version/bin/.:/home/$USER/.local/bin  \
+    -v /home/$USER/docker_volumes/$version/lib/.:/home/$USER/.local/lib  \
+    -v /home/$USER/.local/share/bash-completion/.:/home/$USER/.local/share/bash-completion:ro  \
+    -v /home/$USER/.local/share/Odoo:/home/$USER/.local/share/Odoo ${@:2}  \
+    -p 127.0.0.1:8069:8069/tcp \
+    -p 127.0.0.1:8070:8070/tcp  \
+    runbot_image:$version /bin/bash
